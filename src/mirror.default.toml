@@ -12,6 +12,8 @@
 # Number of download retries before giving up.
 retries = 5
 
+# Connect and read timeout in seconds, optional, default is 10.
+# timeout = 10
 
 # Contact information for the user agent.
 # This is entirely optional, and is not required for the crates.io CDN.
