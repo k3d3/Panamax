@@ -1,5 +1,6 @@
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::{fs, io};
 
 use console::style;
@@ -41,7 +42,14 @@ pub enum MirrorError {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfigMirror {
     pub retries: usize,
+    pub timeout: Option<u64>,
     pub contact: Option<String>,
+}
+
+impl ConfigMirror {
+    pub fn get_timeout(&self) -> Option<Duration> {
+        self.timeout.map(Duration::from_secs)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -97,7 +105,7 @@ pub fn create_mirror_toml(path: &Path, ignore_rustup: bool) -> Result<bool, Mirr
 
     // Read the defautlt toml, edit if required, using toml_edit to keep format
     let config = include_str!("mirror.default.toml");
-    let mut config = config.parse::<toml_edit::Document>()?;
+    let mut config = config.parse::<toml_edit::DocumentMut>()?;
 
     if ignore_rustup {
         config["rustup"]["sync"] = toml_edit::value(false);
@@ -111,7 +119,7 @@ pub fn create_mirror_toml(path: &Path, ignore_rustup: bool) -> Result<bool, Mirr
 }
 
 pub fn load_mirror_toml(path: &Path) -> Result<Config, MirrorError> {
-    Ok(toml_edit::easy::from_str(&fs::read_to_string(
+    Ok(toml_edit::de::from_str(&fs::read_to_string(
         path.join("mirror.toml"),
     )?)?)
 }
