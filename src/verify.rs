@@ -13,7 +13,6 @@ use futures::StreamExt;
 use git2::Repository;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use reqwest::Client;
-use warp::http::HeaderValue;
 
 use crate::{
     crates::{
@@ -355,7 +354,7 @@ pub(crate) async fn fix_mirror(
             });
 
     // Set the user agent with contact information.
-    let user_agent = match HeaderValue::from_str(&user_agent_str) {
+    let user_agent = match reqwest::header::HeaderValue::from_str(&user_agent_str) {
         Ok(h) => h,
         Err(e) => {
             eprintln!("Your contact information contains invalid characters!");

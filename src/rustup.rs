@@ -9,7 +9,7 @@ use console::style;
 use futures::StreamExt;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use reqwest::header::HeaderValue;
-use reqwest::Client;
+use reqwest::{Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -29,6 +29,8 @@ static PLATFORMS_WINDOWS: &[&str] = &[
     "x86_64-pc-windows-gnu",
     "x86_64-pc-windows-msvc",
 ];
+
+static DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Error, Debug)]
 pub enum SyncError {
@@ -59,6 +61,7 @@ pub struct TargetUrls {
     pub xz_hash: String,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct Target {
     pub available: bool,
@@ -67,12 +70,14 @@ pub struct Target {
     pub target_urls: Option<TargetUrls>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct Pkg {
     pub version: String,
     pub target: HashMap<String, Target>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct Channel {
     #[serde(alias = "manifest-version")]
@@ -216,11 +221,16 @@ async fn create_sync_tasks(
     path: &Path,
     source: &str,
     retries: usize,
+    timeout: Option<Duration>,
     user_agent: &HeaderValue,
     threads: usize,
     pb: &ProgressBar,
 ) -> Vec<Result<Result<(), DownloadError>, JoinError>> {
-    let client = Client::new();
+    let client = ClientBuilder::new()
+        .connect_timeout(timeout.unwrap_or(DEFAULT_TIMEOUT))
+        .read_timeout(timeout.unwrap_or(DEFAULT_TIMEOUT))
+        .build()
+        .unwrap();
     futures::stream::iter(platforms.iter())
         .map(|platform| {
             let client = client.clone();
@@ -255,18 +265,24 @@ async fn create_sync_tasks(
 }
 
 /// Synchronize all rustup-init files.
+#[allow(clippy::too_many_arguments)]
 pub async fn sync_rustup_init(
     path: &Path,
     threads: usize,
     source: &str,
     prefix: String,
     retries: usize,
+    timeout: Option<Duration>,
     user_agent: &HeaderValue,
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
     let mut errors_occurred = 0usize;
 
-    let client = Client::new();
+    let client = ClientBuilder::new()
+        .connect_timeout(timeout.unwrap_or(DEFAULT_TIMEOUT))
+        .read_timeout(timeout.unwrap_or(DEFAULT_TIMEOUT))
+        .build()
+        .unwrap();
 
     // Download rustup release file
     let release_url = format!("{source}/rustup/release-stable.toml");
@@ -298,6 +314,7 @@ pub async fn sync_rustup_init(
         path,
         source,
         retries,
+        timeout,
         user_agent,
         threads,
         &pb,
@@ -311,6 +328,7 @@ pub async fn sync_rustup_init(
         path,
         source,
         retries,
+        timeout,
         user_agent,
         threads,
         &pb,
@@ -580,6 +598,7 @@ pub async fn sync_rustup_channel(
     prefix: String,
     channel: &str,
     retries: usize,
+    timeout: Option<Duration>,
     user_agent: &HeaderValue,
     download_dev: bool,
     download_gz: bool,
@@ -601,7 +620,11 @@ pub async fn sync_rustup_channel(
             (url, path, Vec::new())
         };
     let channel_part_path = append_to_path(&channel_path, ".part");
-    let client = Client::new();
+    let client = ClientBuilder::new()
+        .connect_timeout(timeout.unwrap_or(DEFAULT_TIMEOUT))
+        .read_timeout(timeout.unwrap_or(DEFAULT_TIMEOUT))
+        .build()
+        .unwrap();
     download_with_sha256_file(
         &client,
         &channel_url,
@@ -717,6 +740,7 @@ pub async fn sync(
         &rustup.source,
         prefix,
         mirror.retries,
+        mirror.get_timeout(),
         user_agent,
         &platforms,
     )
@@ -739,6 +763,7 @@ pub async fn sync(
             prefix,
             "stable",
             mirror.retries,
+            mirror.get_timeout(),
             user_agent,
             download_dev,
             download_gz,
@@ -769,6 +794,7 @@ pub async fn sync(
             prefix,
             "beta",
             mirror.retries,
+            mirror.get_timeout(),
             user_agent,
             download_dev,
             download_gz,
@@ -799,6 +825,7 @@ pub async fn sync(
             prefix,
             "nightly",
             mirror.retries,
+            mirror.get_timeout(),
             user_agent,
             download_dev,
             download_gz,
@@ -831,6 +858,7 @@ pub async fn sync(
                 prefix,
                 version,
                 mirror.retries,
+                mirror.get_timeout(),
                 user_agent,
                 download_dev,
                 download_gz,

@@ -1,5 +1,6 @@
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::{fs, io};
 
 use console::style;
@@ -41,7 +42,14 @@ pub enum MirrorError {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfigMirror {
     pub retries: usize,
+    pub timeout: Option<u64>,
     pub contact: Option<String>,
+}
+
+impl ConfigMirror {
+    pub fn get_timeout(&self) -> Option<Duration> {
+        self.timeout.map(Duration::from_secs)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
