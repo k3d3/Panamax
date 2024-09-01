@@ -105,7 +105,7 @@ pub fn create_mirror_toml(path: &Path, ignore_rustup: bool) -> Result<bool, Mirr
 
     // Read the defautlt toml, edit if required, using toml_edit to keep format
     let config = include_str!("mirror.default.toml");
-    let mut config = config.parse::<toml_edit::Document>()?;
+    let mut config = config.parse::<toml_edit::DocumentMut>()?;
 
     if ignore_rustup {
         config["rustup"]["sync"] = toml_edit::value(false);
@@ -119,7 +119,7 @@ pub fn create_mirror_toml(path: &Path, ignore_rustup: bool) -> Result<bool, Mirr
 }
 
 pub fn load_mirror_toml(path: &Path) -> Result<Config, MirrorError> {
-    Ok(toml_edit::easy::from_str(&fs::read_to_string(
+    Ok(toml_edit::de::from_str(&fs::read_to_string(
         path.join("mirror.toml"),
     )?)?)
 }
