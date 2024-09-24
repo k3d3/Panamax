@@ -1,9 +1,11 @@
-use std::{collections::HashMap, io, net::SocketAddr, path::PathBuf, process::Stdio};
+use std::{collections::HashMap, io, net::SocketAddr, path::{Path, PathBuf}, process::Stdio};
 
 use askama::Template;
 use bytes::BytesMut;
 use futures_util::stream::TryStreamExt;
 use include_dir::{include_dir, Dir};
+use panamax_search_lib::Index;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     fs::File,
@@ -57,6 +59,56 @@ pub enum ServeError {
 
 impl Reject for ServeError {}
 
+#[derive(Deserialize)]
+struct CratesSearch {
+    q: String,
+    per_page: usize,
+}
+
+async fn search(p: &CratesSearch, path: &Path) -> Result<http::Response<String>, Rejection> {
+    if let Ok(index) = Index::load(path) {
+        let crates = index
+            .search(&[p.q.clone()], true)
+            .to_vec()
+            .into_iter()
+            .map(|crate_| Crate {
+                name: crate_.name,
+                description: crate_.description,
+                max_version: if let Some(v) = &crate_.latest_ny {
+                    v.to_string()
+                } else {
+                    String::from("0.0.0")
+                },
+            })
+            .collect::<Vec<_>>();
+        let meta = TotalCrates { total: crates.len() as u32 };
+        let crates = Crates { crates, meta };
+        let body = serde_json::to_string(&crates).unwrap();
+        if let Ok(res) = Response::builder().body(body) {
+            return Ok(res);
+        }
+    }
+    Err(warp::reject::not_found())
+}
+
+#[derive(Serialize)]
+struct Crate {
+    name: String,
+    description: Option<String>,
+    max_version: String,
+}
+
+#[derive(Serialize)]
+struct TotalCrates {
+    total: u32,
+}
+
+#[derive(Serialize)]
+struct Crates {
+    crates: Vec<Crate>,
+    meta: TotalCrates,
+}
+
 pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<TlsConfig>) {
     let index_path = path.clone();
     let is_tls = tls_paths.is_some();
@@ -83,6 +135,15 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
             }
         },
     );
+
+    // Handle `cargo search` queries ("/crates?q={}&per_page={}")
+    let search_path = path.clone();
+    let crates_search = warp::path::path("crates")
+        .and(warp::query::<CratesSearch>())
+        .and_then(move |p: CratesSearch| {
+            let path = search_path.clone();
+            async move { search(&p, &path).await }
+        });
 
     // Handle all files baked into the binary with include_dir, at /static
     let static_dir =
@@ -190,6 +251,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
         .or(static_dir)
         .or(dist_dir)
         .or(rustup_dir)
+        .or(crates_search)
         .or(crates_dir_native_format)
         .or(crates_dir_condensed_format)
         .or(sparse_index)
