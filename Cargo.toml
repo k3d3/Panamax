@@ -35,6 +35,7 @@ futures-util = "0.3"
 futures = "0.3"
 walkdir = "2.3"
 toml_edit = {version = "0.14", features = ["easy"] }
+panamax-search-lib = "0.1.2"
 
 [features]
 default = []
